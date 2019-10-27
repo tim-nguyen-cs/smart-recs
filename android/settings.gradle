@@ -1,1 +1,0 @@
-include ':sdl_android', ':hello_sdl_android'
