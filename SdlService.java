@@ -54,7 +54,7 @@ public class SdlService extends Service {
 
 	private static final String TAG 					= "SDL Service";
 
-	private static final String APP_NAME 				= "Smart Recommendations";
+	private static final String APP_NAME 				= "Smart Recs";
 	private static final String APP_ID 					= "8678309";
 
 	private static final String ICON_FILENAME 			= "hello_sdl_icon.png";
@@ -67,11 +67,26 @@ public class SdlService extends Service {
 
 	private static final int FOREGROUND_SERVICE_ID = 111;
 
+	private static final double fuelTankSize = 12.4; // 2018 Ford Focus Base Model
+	private static final int mpg = 24; // 2018 Ford Focus Base Model city mpg - naive method
+	private double fuelLevel;	// Percentage of fuel left in tank - naive method
+	private double milesRemaining;
+	private double gpsLat;
+	private double gpsLong;
+
+	// Globals needed for ETA and mileage data
+//	private int uL2gallon = 3785000;	// [uL/g]
+//	private double kph2mph = 0.621371;
+//	private double vehicleSpeed; // [kph] according to ppt
+//	private double vehicleIFC;	// [uL/sec] -- this is an assumption
+//	private int distanceTraveled; // [km] use as interval to calc mpg
+
+
 	// TCP/IP transport config
 	// The default port is 12345
 	// The IP is of the machine that is running SDL Core
 	private static final int TCP_PORT = 12345;
-	private static final String DEV_MACHINE_IP_ADDRESS = "192.168.56.1";
+ 	private static final String DEV_MACHINE_IP_ADDRESS = "192.168.56.1";
 
 	// variable to create and call functions of the SyncProxy
 	private SdlManager sdlManager = null;
@@ -391,12 +406,17 @@ public class SdlService extends Service {
 		sdlManager.sendRPC(request);
 	}
 
-
+	private double naiveMileage() {
+		// Get mileage using hardcoded mpg value
+		return milesRemaining = mpg * (fuelLevel/100) * fuelTankSize;
+	}
 
 	private void subscribeVehicleData() {
 		SubscribeVehicleData request = new SubscribeVehicleData();
-		request.setFuelLevel(true);
-		request.setGps(true);
+		request.setFuelLevel(true);	// Track fuel level
+		request.setGps(true); // Track position of car
+		request.setSpeed(true);	// Track speed
+		request.setInstantFuelConsumption(true); // Track fuel consumption
 		request.setOnRPCResponseListener((new OnRPCResponseListener() {
 			@Override
 			public void onResponse(int correlationId, RPCResponse response) {
@@ -416,17 +436,84 @@ public class SdlService extends Service {
 			public void onNotified(RPCNotification notification) {
 				OnVehicleData dataNotification = (OnVehicleData) notification;
 				if (dataNotification.getFuelLevel() != null) {
-					Log.i("SdlService", "Fuel Level: " + dataNotification.getFuelLevel());
+					fuelLevel = dataNotification.getFuelLevel();
+					Log.i("SdlService", "Fuel Level: " + fuelLevel + "%");
+					milesRemaining = naiveMileage();
+					Log.i("SdlService", "Miles Till Empty :" + milesRemaining + " miles");
 					sendLocation();
 					Log.i("SdlService", "Location sent!");
+				} else if (dataNotification.getFuelLevel() == null) {
+					Log.i("SdlService", "Fuel Level: " + fuelLevel + "%");
+					Log.i("SdlService", "Miles Till Empty: " + milesRemaining + " miles");
 				}
-
+//				if (dataNotification.getSpeed() != null) {
+//					vehicleSpeed = dataNotification.getSpeed()*kph2mph;
+//					if (vehicleSpeed < 1) {
+//						vehicleSpeed = 0;
+//					}
+//					Log.i("SdlService", "Speed: " + vehicleSpeed);
+//				}
+//				if (dataNotification.getInstantFuelConsumption() != null) {
+//					vehicleIFC = dataNotification.getInstantFuelConsumption();
+//					Log.i("SdlService", "Instant Fuel Consumption: " + vehicleIFC);
+//				}
 				if (dataNotification.getGps() != null) {
-					Log.i("SdlService", "GPS Coordinates: " + dataNotification.getGps().getLatitudeDegrees() + " " + dataNotification.getGps().getLongitudeDegrees());
+					gpsLat = dataNotification.getGps().getLatitudeDegrees();
+					gpsLong = dataNotification.getGps().getLongitudeDegrees();
+					Log.i("SdlService", "GPS Coordinates: " + gpsLat + " " + gpsLong);
 				} else {
 					Log.i("SdlService", "GPS Signal is NULL");
 				}
+
 			}
 		});
 	}
+
+//	private double getETA() {
+//		// Get the time estimate before you run out of fuel
+//		// Return ETA in hours, use to back-calculate miles remaining (d = vt)
+////		listenVehicleIFC();
+//		double secVal = (fuelTankSize/(vehicleIFC/uL2gallon));
+//		double hourVal = secVal/3600;
+//		return hourVal;
+//	}
+
+//	private double getMileage() {
+////		From Mechanics: (d = vt)
+////		listenVehicleSpeed();
+//		double secVal = (fuelTankSize/(vehicleIFC/uL2gallon));
+//		double hourVal = secVal/3600;
+//		return hourVal*vehicleSpeed;
+//	}
+
+//	private void listenVehicleSpeed() {
+//		sdlManager.addOnRPCNotificationListener(FunctionID.ON_VEHICLE_DATA, new OnRPCNotificationListener() {
+//			@Override
+//			public void onNotified(RPCNotification notification) {
+//				OnVehicleData dataNotification = (OnVehicleData) notification;
+//				if (dataNotification.getSpeed() != null) {
+//					Log.i("SdlService", "Speed: " + dataNotification.getSpeed()*kph2mph);
+//					vehicleSpeed = dataNotification.getSpeed()*kph2mph;
+//				} else {
+//					Log.i("SdlService", "Speed is unchaged: " + vehicleSpeed);
+//				}
+//			}
+//		});
+//	}
+
+//	private void listenVehicleIFC() {
+//		sdlManager.addOnRPCNotificationListener(FunctionID.ON_VEHICLE_DATA, new OnRPCNotificationListener() {
+//			@Override
+//			public void onNotified(RPCNotification notification) {
+//				OnVehicleData dataNotification = (OnVehicleData) notification;
+//				if (dataNotification.getInstantFuelConsumption() != null) {
+//					Log.i("SdlService", "Instant Fuel Consumption: " + dataNotification.getInstantFuelConsumption());
+//					vehicleIFC = dataNotification.getInstantFuelConsumption();
+//				} else {
+//					Log.i("SdlService", "Instant Fuel Consumption is unchanged: " + vehicleIFC);
+//				}
+//			}
+//		});
+//	}
+
 }
